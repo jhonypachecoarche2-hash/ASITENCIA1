@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Control de Asistencia QR - Escolar Pro Ultra</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Librería para generar códigos QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Librería para capturar el carné QR con borde blanco y descargarlo -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Librería para escanear QR con la cámara -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- ESTILOS: NUEVO FONDO DE PANTALLA Y DISEÑO VISUAL MEJORADO -->
+    <style>
+        body {
+            background: linear-gradient(rgba(2, 6, 23, 0.88), rgba(2, 6, 23, 0.92)), 
+                        url('https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1920&auto=format&fit=crop') no-repeat center center fixed;
+            background-size: cover;
+            color: #f1f5f9;
+            overflow-x: hidden;
+        }
+        .app-header {
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(7, 15, 30, 0.95) 100%);
+            border-bottom: 2px solid rgba(99, 102, 241, 0.4);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+        }
+        
+        @keyframes rgbGlowRandom {
+            0% { border-color: #06b6d4; box-shadow: 0 0 18px rgba(6, 182, 212, 0.35), inset 0 0 10px rgba(6, 182, 212, 0.15); }
+            33% { border-color: #6366f1; box-shadow: 0 0 18px rgba(99, 102, 241, 0.4), inset 0 0 10px rgba(99, 102, 241, 0.2); }
+            66% { border-color: #10b981; box-shadow: 0 0 18px rgba(16, 185, 129, 0.35), inset 0 0 10px rgba(16, 185, 129, 0.15); }
+            100% { border-color: #06b6d4; box-shadow: 0 0 18px rgba(6, 182, 212, 0.35), inset 0 0 10px rgba(6, 182, 212, 0.15); }
+        }
+        .card-custom {
+            background: linear-gradient(145deg, rgba(13, 21, 39, 0.92) 0%, rgba(22, 34, 56, 0.92) 100%);
+            backdrop-filter: blur(12px);
+            border: 2px solid #374151;
+            border-radius: 2rem;
+            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.6);
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: rgbGlowRandom 12s infinite;
+            animation-delay: var(--delay, 0s);
+        }
+        .card-custom:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 25px 50px -10px rgba(6, 182, 212, 0.4);
+        }
+        .tab-btn {
+            transition: all 0.25s ease-in-out;
+            border-radius: 1rem;
+        }
+        .tab-btn:hover {
+            transform: scale(1.05);
+        }
+        @keyframes pulse-led {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 12px #10b981; background-color: #10b981; }
+            50% { opacity: 0.8; transform: scale(0.9); box-shadow: 0 0 12px #38bdf8; background-color: #38bdf8; }
+        }
+        .led-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse-led 3s infinite;
+        }
+        #carnetQrBox {
+            background-color: #ffffff !important;
+            border: 8px solid #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 30px -5px rgba(0, 0, 0, 0.5);
+        }
+        /* Notificación Flotante para Padres */
+        #toastPadres {
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transform: translateY(120%);
+        }
+        #toastPadres.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="font-sans antialiased min-h-screen flex flex-col justify-between">
+    <!-- TOAST DE NOTIFICACIÓN AUTOMÁTICA A PADRES -->
+    <div id="toastPadres" class="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900 border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3">
+        <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl text-xl flex-shrink-0">📲</div>
+        <div class="flex-grow">
+            <div class="flex items-center justify-between">
+                <h4 class="text-xs font-bold text-emerald-300 uppercase tracking-wide">Alerta Automática a Padre/Apoderado</h4>
+                <button onclick="cerrarToastPadres()" class="text-slate-400 hover:text-white text-xs font-bold">&times;</button>
+            </div>
+            <p id="toastPadresMensaje" class="text-xs text-slate-200 mt-1 font-medium">Notificación enviada con éxito.</p>
+        </div>
+    </div>
+    <!-- PORTADA DE BIENVENIDA / ACCESO INSTITUCIONAL -->
+    <div id="seccionPortada" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/96 backdrop-blur-xl overflow-y-auto transition-opacity duration-500">
+        <div class="max-w-6xl w-full my-auto py-6">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 bg-indigo-500/20 text-indigo-300 px-4 py-1.5 rounded-full border border-indigo-500/40 text-xs font-bold mb-3">
+                    <span class="led-dot"></span> Plataforma Académica Inteligente v5.0 Pro
+                </div>
+                <h1 class="text-3xl md:text-5xl font-black tracking-tight text-white mb-3">Sistema de Control de Asistencia QR</h1>
+                <p class="text-xs md:text-sm text-cyan-400 font-medium max-w-2xl mx-auto">Optimiza el registro escolar con reportes avanzados, exportación a Excel y alertas automatizadas a padres.</p>
+                
+                <div class="mt-6 max-w-4xl mx-auto rounded-3xl overflow-hidden border-2 border-cyan-500/50 shadow-2xl relative h-56 md:h-72 bg-slate-900">
+                    <img src="https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?q=80&w=1200&auto=format&fit=crop" alt="Estudiantes y tecnología QR" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/40 to-transparent"></div>
+                    <div class="absolute bottom-4 left-0 right-0 text-center">
+                        <span class="bg-indigo-950/80 text-cyan-300 border border-indigo-500/50 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg">📱 Reportes Inteligentes & Alertas WhatsApp Integradas</span>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch mb-6">
+                
+                <div class="card-custom p-6 md:p-8 flex flex-col justify-between border-indigo-500" style="--delay: -1s;">
+                    <div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-tr from-cyan-500 to-indigo-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-indigo-500/40">
+                                🔐
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-white">Portal de Acceso</h2>
+                                <p class="text-xs text-slate-400">Identifícate para ingresar al sistema</p>
+                            </div>
+                        </div>
+                        <div class="space-y-4 mb-6 bg-[#070f1e]/80 p-4 rounded-2xl border border-gray-800">
+                            <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider">Selecciona tu Perfil:</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button type="button" onclick="seleccionarRol('admin')" id="btnRolAdmin" class="p-3 rounded-xl border border-cyan-500 bg-cyan-950/40 text-cyan-300 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer">
+                                    <span class="text-lg">👨‍🏫</span> Profesor / Admin
+                                </button>
+                                <button type="button" onclick="seleccionarRol('estudiante')" id="btnRolEstudiante" class="p-3 rounded-xl border border-gray-700 bg-gray-900/60 text-slate-400 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer">
+                                    <span class="text-lg">🎓</span> Estudiante
+                                </button>
+                            </div>
+                            <div id="contenedorInputAdmin" class="mt-3 space-y-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Ingresa tu DNI (8 dígitos) o Contraseña:</label>
+                                    <input type="text" id="inputAdminCredencial" placeholder="Ej: 71234567 o admin123" class="w-full p-3 bg-[#030712] border border-gray-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                </div>
+                            </div>
+                            <div id="contenedorInputEstudiante" class="hidden mt-3">
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Ingresa tu DNI / Código (8 dígitos):</label>
+                                <input type="text" id="inputDniEstudiantePortal" maxlength="8" placeholder="Ej: 71234567" class="w-full p-3 bg-[#030712] border border-gray-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="ingresarAlSistema()" class="w-full bg-gradient-to-r from-indigo-600 to-cyan-600 text-white py-3.5 rounded-2xl font-bold hover:from-indigo-500 hover:to-cyan-500 shadow-lg shadow-indigo-600/30 transition transform active:scale-95 cursor-pointer text-sm flex items-center justify-center gap-2">🚀 Ingresar al Sistema</button>
+                </div>
+                <div class="card-custom p-6 md:p-8 flex flex-col justify-between border-cyan-500" style="--delay: -4s;">
+                    <div>
+                        <h2 class="text-xl font-bold text-cyan-400 mb-2 flex items-center gap-2">💡 Características Principales</h2>
+                        <p class="text-xs text-slate-400 mb-4">Funciones avanzadas incorporadas en esta versión:</p>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="bg-[#070f1e]/90 p-3.5 rounded-2xl border border-gray-800">
+                                <div class="text-cyan-400 text-lg mb-1">📊</div>
+                                <h3 class="font-bold text-xs text-white mb-1">1. Reportes y Filtros</h3>
+                                <p class="text-[11px] text-slate-400">Filtra el historial de asistencia por fecha exacta, tipo o estado con búsqueda avanzada.</p>
+                            </div>
+                            <div class="bg-[#070f1e]/90 p-3.5 rounded-2xl border border-gray-800">
+                                <div class="text-emerald-400 text-lg mb-1">📥</div>
+                                <h3 class="font-bold text-xs text-white mb-1">2. Exportar a Excel</h3>
+                                <p class="text-[11px] text-slate-400">Descarga todos los reportes de asistencia filtrados o completos en formato CSV para Excel.</p>
+                            </div>
+                            <div class="bg-[#070f1e]/90 p-3.5 rounded-2xl border border-gray-800">
+                                <div class="text-amber-400 text-lg mb-1">📲</div>
+                                <h3 class="font-bold text-xs text-white mb-1">3. Alertas a Padres</h3>
+                                <p class="text-[11px] text-slate-400">Simulación automática de envío de notificaciones y WhatsApp a apoderados ante tardanzas.</p>
+                            </div>
+                            <div class="bg-[#070f1e]/90 p-3.5 rounded-2xl border border-gray-800">
+                                <div class="text-indigo-400 text-lg mb-1">⚙️</div>
+                                <h3 class="font-bold text-xs text-white mb-1">4. Control Total</h3>
+                                <p class="text-[11px] text-slate-400">Gestión de carnés QR, base de datos de alumnos y gráficos dinámicos actualizados.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-800 text-center">
+                        <p class="text-[11px] text-slate-400 font-medium">✨ Solución integral para centros educativos modernos.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-custom p-6 md:p-8 border-indigo-500/60 bg-[#070f1e]/90 text-center">
+                <div class="flex items-center justify-center gap-2 mb-2">
+                    <span class="text-2xl">🛠️</span>
+                    <h3 class="text-lg font-bold text-white">¿Necesitas Ayuda o Soporte Técnico?</h3>
+                </div>
+                <p class="text-xs text-slate-400 max-w-xl mx-auto mb-4">Comunícate con nuestro equipo técnico especializado para cualquier consulta sobre reportes, escáner o exportación.</p>
+                
+                <div class="inline-flex items-center gap-3 bg-gradient-to-r from-emerald-950/80 to-cyan-950/80 border border-emerald-500/50 px-6 py-3 rounded-2xl shadow-lg">
+                    <span class="text-xl">📞</span>
+                    <div class="text-left">
+                        <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Línea Directa de Soporte Técnico:</p>
+                        <a href="https://wa.me/51935924147?text=Hola,%20necesito%20soporte%20con%20el%20sistema%20de%20asistencia%20QR" target="_blank" class="text-base md:text-lg font-black text-white hover:text-cyan-300 transition">+51 935 924 147</a>
+                    </div>
+                </div>
+            </div>
+            
+            <p class="text-center text-[10px] text-slate-500 mt-6">Sistema de Control de Asistencia Escolar con QR &copy; 2026</p>
+        </div>
+    </div>
+    <!-- MODAL FLOTANTE GENERAL -->
+    <div id="modalConfirmacion" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm hidden">
+        <div class="card-custom p-6 max-w-sm w-full mx-4 text-center border-indigo-500">
+            <div id="modalIcono" class="text-4xl mb-3">⚠️</div>
+            <h3 id="modalTitulo" class="text-lg font-bold text-white mb-2">¿Estás seguro?</h3>
+            <p id="modalMensaje" class="text-xs text-slate-300 mb-6">Esta acción se aplicará en el sistema.</p>
+            <div class="flex justify-center gap-3">
+                <button id="btnModalCancelar" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-xl font-bold text-xs transition cursor-pointer">Cancelar</button>
+                <button id="btnModalAceptar" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl font-bold text-xs shadow transition cursor-pointer">Sí, confirmar</button>
+            </div>
+        </div>
+    </div>
+    <!-- BARRA DE NAVEGACIÓN -->
+    <header class="app-header text-white sticky top-0 z-40">
+        <div class="container mx-auto flex flex-wrap justify-between items-center p-4">
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-extrabold tracking-wide flex items-center gap-3">
+                    <span class="led-dot"></span> 🏫 Asistencia QR <span class="text-xs bg-indigo-500/30 text-indigo-300 px-2 py-1 rounded-full border border-indigo-500/50">PRO v5.0</span>
+                </h1>
+                <span id="badgeRolUsuario" class="text-[10px] bg-cyan-500/20 text-cyan-300 px-2.5 py-1 rounded-lg border border-cyan-500/40 font-bold hidden">Perfil: Admin</span>
+            </div>
+            <nav id="navPrincipal" class="flex flex-wrap gap-2 mt-3 md:mt-0">
+                <button onclick="cambiarTab('registro')" class="tab-btn bg-indigo-600 text-white px-4 py-2 font-bold shadow-md hover:bg-indigo-500">Estudiantes & QR</button>
+                <button onclick="cambiarTab('escaner')" class="tab-btn bg-gray-800/80 text-slate-300 px-4 py-2 font-semibold hover:bg-gray-700 hover:text-white">Escanear QR</button>
+                <button onclick="cambiarTab('alumnos')" class="tab-btn bg-gray-800/80 text-slate-300 px-4 py-2 font-semibold hover:bg-gray-700 hover:text-white">Gestionar Alumnos</button>
+                <button onclick="cambiarTab('config')" class="tab-btn bg-gray-800/80 text-slate-300 px-4 py-2 font-semibold hover:bg-gray-700 hover:text-white">Horarios</button>
+                <button onclick="cambiarTab('historial')" class="tab-btn bg-gray-800/80 text-slate-300 px-4 py-2 font-semibold hover:bg-gray-700 hover:text-white">Reportes & Historial</button>
+                <button onclick="cambiarTab('estadisticas')" class="tab-btn bg-gray-800/80 text-slate-300 px-4 py-2 font-semibold hover:bg-gray-700 hover:text-white">Gráficos</button>
+            </nav>
+            <button onclick="cerrarSesionPortada()" class="bg-gray-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 px-3 py-1.5 rounded-xl text-xs font-bold transition border border-gray-700 cursor-pointer flex items-center gap-1 mt-2 md:mt-0">🚪 Salir</button>
+        </div>
+    </header>
+    <main class="container mx-auto p-4 md:p-6 my-auto flex-grow max-w-6xl">
+        <!-- VISTA 1: REGISTRO Y QR -->
+        <section id="vista-registro" class="vista active-view">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="card-custom p-4 flex items-center gap-4" style="--delay: -1.5s;">
+                    <div class="bg-indigo-500/20 p-3 rounded-2xl text-indigo-400 text-2xl">👥</div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Total Registrados</p>
+                        <h3 id="statTotalAlumnos" class="text-xl font-bold text-white">0 Alumnos</h3>
+                    </div>
+                </div>
+                <div class="card-custom p-4 flex items-center gap-4" style="--delay: -4s;">
+                    <div class="bg-cyan-500/20 p-3 rounded-2xl text-cyan-400 text-2xl">⚡</div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Sistema LED Activo</p>
+                        <h3 class="text-xl font-bold text-cyan-400">Multicolor RGB</h3>
+                    </div>
+                </div>
+                <div class="card-custom p-4 flex items-center gap-4" style="--delay: -7.5s;">
+                    <div class="bg-amber-500/20 p-3 rounded-2xl text-amber-400 text-2xl">🕒</div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Hora Límite Configurada</p>
+                        <h3 id="statHoraLimiteLabel" class="text-xl font-bold text-white">08:00 AM</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="card-custom p-6 md:p-8" style="--delay: -2s;">
+                    <h2 class="text-xl font-bold text-cyan-400 mb-2 flex items-center gap-2">👤 Registrar Nuevo Estudiante</h2>
+                    <p class="text-xs text-slate-400 mb-6">Ingresa los datos personales para generar automáticamente su código de acceso único.</p>
+                    
+                    <form id="formEstudiante" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-300 mb-1">Nombre Completo:</label>
+                            <input type="text" id="nombreAlumno" required placeholder="Ej. Juan Pérez" class="w-full p-3 bg-[#070f1e]/80 border border-gray-700 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-300 mb-1">DNI / Código (Exactamente 8 dígitos):</label>
+                            <input type="text" id="codigoAlumno" required maxlength="8" pattern="\d{8}" title="Debe ingresar exactamente 8 números" placeholder="Ej: 71234567" class="w-full p-3 bg-[#070f1e]/80 border border-gray-700 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+                        </div>
+                        <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-cyan-600 text-white py-3.5 rounded-2xl font-bold hover:from-indigo-500 hover:to-cyan-500 shadow-lg shadow-indigo-600/30 transition transform active:scale-95 cursor-pointer flex items-center justify-center gap-2">✨ Generar Estudiante y QR</button>
+                    </form>
+                </div>
+                <div class="card-custom p-6 md:p-8 flex flex-col items-center justify-center text-center" style="--delay: -5s;">
+                    <h2 class="text-xl font-bold text-cyan-400 mb-1">Carné QR Generado</h2>
+                    <p id="infoQrText" class="text-sm text-slate-400 mb-6">Complete el formulario para visualizar el carné</p>
+                    
+                    <div id="carnetQrBox" class="p-8 rounded-3xl inline-block hidden my-2 text-slate-900">
+                        <div id="qrcode" class="flex justify-center items-center mb-3"></div>
+                        <p id="nombreQrLabel" class="font-bold text-sm tracking-wide text-slate-800 uppercase"></p>
+                    </div>
+                    
+                    <button id="btnDescargarQr" onclick="descargarQRConBorde()" class="mt-6 bg-emerald-600 text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition hidden flex items-center gap-2 cursor-pointer">📥 Descargar Carné QR</button>
+                </div>
+            </div>
+        </section>
+        <!-- VISTA 2: ESCÁNER CON CÁMARA -->
+        <section id="vista-escaner" class="vista hidden">
+            <div class="max-w-xl mx-auto card-custom p-6 md:p-8 text-center" style="--delay: -3s;">
+                <h2 class="text-xl font-bold text-cyan-400 mb-2">📷 Lector de Asistencia por Cámara</h2>
+                <p class="text-xs text-slate-400 mb-6">Selecciona el modo de control y apunta con la cámara al carné QR del estudiante.</p>
+                
+                <div class="flex justify-center gap-4 mb-6">
+                    <label class="cursor-pointer flex items-center gap-2 bg-[#070f1e]/80 px-5 py-2.5 rounded-2xl border border-emerald-500/50 font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-950/60">
+                        <input type="radio" name="modoAsistencia" value="entrada" checked class="accent-emerald-500 w-4 h-4"> Modo Entrada
+                    </label>
+                    <label class="cursor-pointer flex items-center gap-2 bg-[#070f1e]/80 px-5 py-2.5 rounded-2xl border border-amber-500/50 font-bold text-amber-300 shadow-sm transition hover:bg-amber-950/60">
+                        <input type="radio" name="modoAsistencia" value="salida" class="accent-amber-500 w-4 h-4"> Modo Salida
+                    </label>
+                </div>
+                <div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-indigo-500/40 mb-6 bg-[#040814]/90 min-h-[220px] flex items-center justify-center text-slate-400 text-sm">Cámara apagada. Presiona "Encender Cámara".</div>
+                <div class="flex justify-center gap-4">
+                    <button onclick="iniciarCamara()" class="bg-emerald-600 text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition cursor-pointer">🟢 Encender Cámara</button>
+                    <button onclick="apagarCamara()" class="bg-rose-600 text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-rose-500 shadow-md shadow-rose-600/30 transition cursor-pointer">🔴 Apagar Cámara</button>
+                </div>
+                <div id="resultadoEscaneo" class="mt-4 p-4 rounded-2xl font-medium text-sm"></div>
+            </div>
+        </section>
+        <!-- VISTA 3: GESTIONAR Y BORRAR ALUMNOS -->
+        <section id="vista-alumnos" class="vista hidden">
+            <div class="card-custom p-6 md:p-8" style="--delay: -6s;">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-cyan-400">⚙️ Directorio y Administración de Alumnos</h2>
+                        <p class="text-xs text-slate-400">Visualiza la lista completa de estudiantes inscritos y elimina registros obsoletos.</p>
+                    </div>
+                    <span id="badgeTotalDirectorio" class="bg-indigo-900/60 text-indigo-300 border border-indigo-700 px-4 py-1.5 rounded-xl font-bold text-xs">Total: 0</span>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-[#070f1e]/90 text-cyan-400 border-b border-gray-700 text-sm">
+                                <th class="p-3 rounded-tl-xl">Nombre Completo</th>
+                                <th class="p-3">DNI / Código</th>
+                                <th class="p-3 text-center rounded-tr-xl">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaAlumnosBody" class="text-sm">
+                            <tr><td colspan="3" class="p-6 text-center text-slate-400">No hay estudiantes registrados.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <!-- VISTA 4: CONFIGURACIÓN DE HORARIOS -->
+        <section id="vista-config" class="vista hidden">
+            <div class="max-w-md mx-auto card-custom p-6 md:p-8" style="--delay: -2.5s;">
+                <h2 class="text-xl font-bold text-cyan-400 mb-2">⏰ Configuración de Horario</h2>
+                <p class="text-xs text-slate-400 mb-6">Establece la hora máxima de tolerancia para considerar puntualidad en la entrada.</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-300 mb-1">Hora Máxima de Puntualidad:</label>
+                        <input type="time" id="horaLimitePuntual" value="08:00" class="w-full p-3 bg-[#070f1e]/80 border border-gray-700 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                    </div>
+                    <button onclick="confirmarGuardarHorario()" class="w-full bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition cursor-pointer">Guardar Configuración</button>
+                </div>
+            </div>
+        </section>
+        <!-- VISTA 5: HISTORIAL Y REPORTES AVANZADOS CON FILTROS Y EXCEL -->
+        <section id="vista-historial" class="vista hidden">
+            <div class="card-custom p-6 md:p-8" style="--delay: -8s;">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-cyan-400 mb-1">📋 Reportes e Historial de Asistencia</h2>
+                        <p class="text-xs text-slate-400">Filtra los marcajes por fecha o estado y exporta los resultados a Excel.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="exportarExcelCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-xl font-bold text-xs shadow transition cursor-pointer flex items-center gap-1">📊 Exportar a Excel (CSV)</button>
+                        <button onclick="confirmarResetearHistorial()" class="bg-rose-700 hover:bg-rose-600 text-white px-4 py-1.5 rounded-xl font-bold text-xs shadow transition cursor-pointer flex items-center gap-1">🗑️ Resetear Todo</button>
+                    </div>
+                </div>
+                <!-- PANEL DE FILTROS AVANZADOS -->
+                <div class="bg-[#070f1e]/90 p-4 rounded-2xl border border-gray-800 mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 mb-1">Filtrar por Fecha:</label>
+                        <input type="date" id="filtroFecha" onchange="actualizarTablaHistorial()" class="w-full p-2.5 bg-[#030712] border border-gray-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 mb-1">Filtrar por Estado:</label>
+                        <select id="filtroEstado" onchange="actualizarTablaHistorial()" class="w-full p-2.5 bg-[#030712] border border-gray-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                            <option value="">Todos los Estados</option>
+                            <option value="PUNTUAL">Puntual</option>
+                            <option value="TARDANZA">Tardanza</option>
+                            <option value="SALIDA">Salida</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="limpiarFiltros()" class="w-full bg-gray-800 hover:bg-gray-700 text-slate-300 py-2.5 rounded-xl text-xs font-bold transition border border-gray-700 cursor-pointer">🔄 Limpiar Filtros</button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-[#070f1e]/90 text-cyan-400 border-b border-gray-700 text-sm">
+                                <th class="p-3 rounded-tl-xl">Estudiante</th>
+                                <th class="p-3">DNI</th>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Estado</th>
+                                <th class="p-3">Fecha y Hora</th>
+                                <th class="p-3 text-center rounded-tr-xl">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaHistorialBody" class="text-sm">
+                            <tr><td colspan="6" class="p-6 text-center text-slate-400">No hay registros de asistencia aún.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <!-- VISTA 6: GRÁFICO ESTADÍSTICO -->
+        <section id="vista-estadisticas" class="vista hidden">
+            <div class="max-w-xl mx-auto card-custom p-6 md:p-8 text-center" style="--delay: -4.5s;">
+                <h2 class="text-xl font-bold text-cyan-400 mb-2">📊 Resumen Gráfico de Puntualidad</h2>
+                <p class="text-xs text-slate-400 mb-6">Análisis comparativo de alumnos puntuales frente a tardanzas registradas.</p>
+                <div class="chart-container">
+                    <canvas id="graficoAsistencia"></canvas>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- FOOTER -->
+    <footer class="bg-[#040814]/90 border-t border-gray-800 text-center py-4 text-xs text-slate-500 mt-8">
+        Sistema de Control de Asistencia Escolar con QR &copy; 2026
+    </footer>
+    <!-- LÓGICA JAVASCRIPT -->
+    <script>
+        let rolActual = 'admin';
+        let dniEstudianteLogueado = '';
+        function seleccionarRol(rol) {
+            rolActual = rol;
+            const btnAdmin = document.getElementById('btnRolAdmin');
+            const btnEstudiante = document.getElementById('btnRolEstudiante');
+            const containerAdmin = document.getElementById('contenedorInputAdmin');
+            const containerEstudiante = document.getElementById('contenedorInputEstudiante');
+            if (rol === 'admin') {
+                btnAdmin.className = "p-3 rounded-xl border border-cyan-500 bg-cyan-950/40 text-cyan-300 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer";
+                btnEstudiante.className = "p-3 rounded-xl border border-gray-700 bg-gray-900/60 text-slate-400 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer";
+                containerAdmin.classList.remove('hidden');
+                containerEstudiante.classList.add('hidden');
+            } else {
+                btnEstudiante.className = "p-3 rounded-xl border border-cyan-500 bg-cyan-950/40 text-cyan-300 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer";
+                btnAdmin.className = "p-3 rounded-xl border border-gray-700 bg-gray-900/60 text-slate-400 font-bold text-xs flex flex-col items-center gap-1 transition cursor-pointer";
+                containerAdmin.classList.add('hidden');
+                containerEstudiante.classList.remove('hidden');
+            }
+        }
+        function ingresarAlSistema() {
+            if (rolActual === 'admin') {
+                const credencial = document.getElementById('inputAdminCredencial').value.trim();
+                if (credencial !== "" && credencial !== "admin123" && !/^\d{8}$/.test(credencial)) {
+                    mostrarModal("Credencial Inválida", "Ingresa una contraseña válida o un DNI de 8 dígitos.", "⚠️", () => {});
+                    return;
+                }
+            } else {
+                const dniIngresado = document.getElementById('inputDniEstudiantePortal').value.trim();
+                if (!/^\d{8}$/.test(dniIngresado)) {
+                    mostrarModal("DNI Inválido", "Por favor ingresa un DNI válido de 8 dígitos para acceder como estudiante.", "⚠️", () => {});
+                    return;
+                }
+                const existe = estudiantes.some(e => e.codigo === dniIngresado);
+                if (!existe) {
+                    mostrarModal("Estudiante No Encontrado", "El DNI ingresado no se encuentra registrado en el sistema escolar.", "⚠️", () => {});
+                    return;
+                }
+                dniEstudianteLogueado = dniIngresado;
+            }
+            const portada = document.getElementById('seccionPortada');
+            portada.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => portada.classList.add('hidden'), 500);
+            aplicarRestriccionesRol();
+        }
+        function cerrarSesionPortada() {
+            const portada = document.getElementById('seccionPortada');
+            portada.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+            apagarCamara();
+        }
+        function aplicarRestriccionesRol() {
+            const badgeRol = document.getElementById('badgeRolUsuario');
+            const nav = document.getElementById('navPrincipal');
+            badgeRol.classList.remove('hidden');
+            if (rolActual === 'admin') {
+                badgeRol.innerText = "Perfil: Profesor / Admin";
+                badgeRol.className = "text-[10px] bg-cyan-500/20 text-cyan-300 px-2.5 py-1 rounded-lg border border-cyan-500/40 font-bold";
+                nav.style.display = "flex";
+                cambiarTab('registro');
+            } else {
+                const alumnoInfo = estudiantes.find(e => e.codigo === dniEstudianteLogueado);
+                badgeRol.innerText = `Estudiante: ${alumnoInfo ? alumnoInfo.nombre : dniEstudianteLogueado}`;
+                badgeRol.className = "text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg border border-emerald-500/40 font-bold";
+                
+                nav.style.display = "none";
+                cambiarTab('registro');
+                setTimeout(() => {
+                    document.getElementById('nombreAlumno').value = alumnoInfo.nombre;
+                    document.getElementById('codigoAlumno').value = alumnoInfo.codigo;
+                    document.getElementById('infoQrText').innerText = "Tu Carné de Acceso Personal";
+                    document.getElementById('carnetQrBox').classList.remove('hidden');
+                    document.getElementById('btnDescargarQr').classList.remove('hidden');
+                    document.getElementById('nombreQrLabel').innerText = `${alumnoInfo.nombre} (DNI: ${alumnoInfo.codigo})`;
+                    document.getElementById('qrcode').innerHTML = "";
+                    new QRCode(document.getElementById("qrcode"), {
+                        text: alumnoInfo.codigo,
+                        width: 180,
+                        height: 180,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }, 100);
+            }
+        }
+        function cambiarTab(idVista) {
+            document.querySelectorAll('.vista').forEach(el => el.classList.add('hidden'));
+            document.getElementById('vista-' + idVista).classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white', 'shadow-md');
+                btn.classList.add('bg-gray-800/80', 'text-slate-300');
+            });
+            if(event && event.target && event.target.classList.contains('tab-btn')) {
+                event.target.classList.remove('bg-gray-800/80', 'text-slate-300');
+                event.target.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
+            }
+            if(idVista === 'registro') actualizarEstadisticasGenerales();
+            if(idVista === 'alumnos') actualizarTablaAlumnos();
+            if(idVista === 'historial') actualizarTablaHistorial();
+            if(idVista === 'estadisticas') actualizarGrafico();
+            if(idVista !== 'escaner') apagarCamara();
+        }
+        let estudiantes = JSON.parse(localStorage.getItem('estudiantes')) || [];
+        let asistencias = JSON.parse(localStorage.getItem('asistencias')) || [];
+        let horaLimite = localStorage.getItem('horaLimite') || "08:00";
+        document.getElementById('horaLimitePuntual').value = horaLimite;
+        function mostrarModal(titulo, mensaje, icono, callbackAceptar) {
+            const modal = document.getElementById('modalConfirmacion');
+            document.getElementById('modalTitulo').innerText = titulo;
+            document.getElementById('modalMensaje').innerText = mensaje;
+            document.getElementById('modalIcono').innerText = icono;
+            modal.classList.remove('hidden');
+            const btnAceptar = document.getElementById('btnModalAceptar');
+            const btnCancelar = document.getElementById('btnModalCancelar');
+            const nuevoBtnAceptar = btnAceptar.cloneNode(true);
+            const nuevoBtnCancelar = btnCancelar.cloneNode(true);
+            btnAceptar.parentNode.replaceChild(nuevoBtnAceptar, btnAceptar);
+            btnCancelar.parentNode.replaceChild(nuevoBtnCancelar, btnCancelar);
+            nuevoBtnAceptar.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                callbackAceptar();
+            });
+            nuevoBtnCancelar.addEventListener('click', () => {
+                modal.classList.add('hidden');
+            });
+        }
+        function dispararNotificacionPadres(nombreAlumno, estado, hora) {
+            const toast = document.getElementById('toastPadres');
+            const msg = document.getElementById('toastPadresMensaje');
+            if (estado === 'TARDANZA') {
+                msg.innerText = `Alerta: El alumno ${nombreAlumno} marcó tardanza a las ${hora}. Mensaje enviado al WhatsApp del apoderado.`;
+            } else {
+                msg.innerText = `Aviso: El alumno ${nombreAlumno} registró ${estado} correctamente a las ${hora}. Apoderado notificado.`;
+            }
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 6000);
+        }
+        function cerrarToastPadres() {
+            document.getElementById('toastPadres').classList.remove('show');
+        }
+        function actualizarEstadisticasGenerales() {
+            document.getElementById('statTotalAlumnos').innerText = `${estudiantes.length} Alumnos`;
+            document.getElementById('statHoraLimiteLabel').innerText = `${horaLimite} AM`;
+        }
+        actualizarEstadisticasGenerales();
+        document.getElementById('formEstudiante').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('nombreAlumno').value;
+            const codigo = document.getElementById('codigoAlumno').value;
+            if (!/^\d{8}$/.test(codigo)) {
+                mostrarModal("DNI Inválido", "El DNI / Código debe contener exactamente 8 dígitos numéricos.", "⚠️", () => {});
+                return;
+            }
+            if (estudiantes.some(e => e.codigo === codigo)) {
+                mostrarModal("DNI Duplicado", "Este DNI ya se encuentra registrado en el sistema.", "⚠️", () => {});
+                return;
+            }
+            mostrarModal("¿Registrar Estudiante?", `¿Deseas registrar a ${nombre} con el DNI ${codigo}?`, "👤", () => {
+                estudiantes.push({ nombre, codigo });
+                localStorage.setItem('estudiantes', JSON.stringify(estudiantes));
+                actualizarEstadisticasGenerales();
+                document.getElementById('infoQrText').innerText = "¡QR generado con éxito!";
+                document.getElementById('carnetQrBox').classList.remove('hidden');
+                document.getElementById('btnDescargarQr').classList.remove('hidden');
+                document.getElementById('nombreQrLabel').innerText = `${nombre} (DNI: ${codigo})`;
+                document.getElementById('qrcode').innerHTML = "";
+                new QRCode(document.getElementById("qrcode"), {
+                    text: codigo,
+                    width: 180,
+                    height: 180,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+                document.getElementById('formEstudiante').reset();
+            });
+        });
+        function descargarQRConBorde() {
+            const carnetElement = document.getElementById('carnetQrBox');
+            html2canvas(carnetElement, { scale: 3 }).then(canvas => {
+                const enlace = document.createElement('a');
+                enlace.href = canvas.toDataURL("image/png");
+                enlace.download = `Carnet_QR_${document.getElementById('nombreQrLabel').innerText.split('(')[0].trim()}.png`;
+                enlace.click();
+            });
+        }
+        function eliminarEstudiante(codigo) {
+            const alumno = estudiantes.find(e => e.codigo === codigo);
+            if (!alumno) return;
+            mostrarModal("¿Eliminar Estudiante?", `¿Deseas eliminar a ${alumno.nombre} (DNI: ${codigo}) del sistema?`, "👤", () => {
+                estudiantes = estudiantes.filter(e => e.codigo !== codigo);
+                localStorage.setItem('estudiantes', JSON.stringify(estudiantes));
+                actualizarTablaAlumnos();
+                actualizarEstadisticasGenerales();
+            });
+        }
+        function actualizarTablaAlumnos() {
+            const tbody = document.getElementById('tablaAlumnosBody');
+            document.getElementById('badgeTotalDirectorio').innerText = `Total: ${estudiantes.length}`;
+            if (estudiantes.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400">No hay estudiantes registrados.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = estudiantes.map(e => `
+                <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition">
+                    <td class="p-3 font-medium text-slate-200">${e.nombre}</td>
+                    <td class="p-3 text-slate-400">${e.codigo}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="eliminarEstudiante('${e.codigo}')" class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow transition cursor-pointer">🗑️ Eliminar</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        function confirmarGuardarHorario() {
+            const nuevaHora = document.getElementById('horaLimitePuntual').value;
+            mostrarModal("¿Actualizar Horario?", `¿Deseas cambiar la hora límite de puntualidad a las ${nuevaHora}?`, "⏰", () => {
+                horaLimite = nuevaHora;
+                localStorage.setItem('horaLimite', horaLimite);
+                actualizarEstadisticasGenerales();
+            });
+        }
+        let html5QrCode = null;
+        let camaraActiva = false;
+        function iniciarCamara() {
+            if (camaraActiva) return;
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                onScanSuccess
+            ).then(() => {
+                camaraActiva = true;
+            }).catch(err => {
+                mostrarModal("Error de Cámara", "No se pudo iniciar la cámara: " + err, "⚠️", () => {});
+            });
+        }
+        function apagarCamara() {
+            if (html5QrCode && camaraActiva) {
+                html5QrCode.stop().then(() => {
+                    camaraActiva = false;
+                    document.getElementById('reader').innerHTML = "Cámara apagada. Presiona \"Encender Cámara\".";
+                }).catch(err => console.log(err));
+            }
+        }
+        function onScanSuccess(decodedText) {
+            const alumno = estudiantes.find(e => e.codigo === decodedText);
+            const resDiv = document.getElementById('resultadoEscaneo');
+            if (!alumno) {
+                resDiv.className = "mt-4 p-4 rounded-2xl bg-rose-950 text-rose-300 font-bold border border-rose-800";
+                resDiv.innerText = `⚠️ Código "${decodedText}" no registrado en el sistema.`;
+                return;
+            }
+            const modo = document.querySelector('input[name="modoAsistencia"]:checked').value;
+            const hoyFechaStr = new Date().toLocaleDateString();
+            const yaRegistradoHoy = asistencias.some(a => 
+                a.codigo === decodedText && 
+                a.tipo === modo.toUpperCase() && 
+                a.fecha.includes(hoyFechaStr)
+            );
+            if (yaRegistradoHoy) {
+                resDiv.className = "mt-4 p-4 rounded-2xl bg-amber-950 text-amber-300 font-bold border border-amber-800";
+                resDiv.innerText = `⚠️ ${alumno.nombre} ya cuenta con un registro de ${modo.toUpperCase()} para el día de hoy.`;
+                return;
+            }
+            const ahora = new Date();
+            const horaActual = ahora.toTimeString().substring(0, 5);
+            const fechaFormateada = ahora.toLocaleString();
+            const fechaIsoYMD = ahora.toISOString().split('T')[0];
+            let estado = "puntual";
+            if (modo === 'entrada' && horaActual > horaLimite) {
+                estado = "tardanza";
+            } else if (modo === 'salida') {
+                estado = "salida";
+            }
+            asistencias.unshift({
+                nombre: alumno.nombre,
+                codigo: alumno.codigo,
+                tipo: modo.toUpperCase(),
+                estado: estado.toUpperCase(),
+                fecha: fechaFormateada,
+                rawDate: fechaIsoYMD
+            });
+            localStorage.setItem('asistencias', JSON.stringify(asistencias));
+            actualizarTablaHistorial();
+            dispararNotificacionPadres(alumno.nombre, estado.toUpperCase(), horaActual);
+            resDiv.className = `mt-4 p-4 rounded-2xl font-bold border ${estado === 'tardanza' ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800'}`;
+            resDiv.innerText = `✅ Éxito: ${alumno.nombre} registrado como ${modo.toUpperCase()} (${estado.toUpperCase()}) a las ${horaActual}`;
+        }
+        function borrarRegistroHistorial(indexReal) {
+            mostrarModal("¿Borrar Registro?", "¿Estás seguro de eliminar este registro específico del historial?", "🗑️", () => {
+                asistencias.splice(indexReal, 1);
+                localStorage.setItem('asistencias', JSON.stringify(asistencias));
+                actualizarTablaHistorial();
+            });
+        }
+        function confirmarResetearHistorial() {
+            if (asistencias.length === 0) {
+                mostrarModal("Historial Vacío", "El historial ya se encuentra completamente vacío.", "ℹ️", () => {});
+                return;
+            }
+            mostrarModal("¿Resetear Historial?", "¿Estás completamente seguro de vaciar todo el historial de asistencias?", "⚠️", () => {
+                asistencias = [];
+                localStorage.removeItem('asistencias');
+                actualizarTablaHistorial();
+            });
+        }
+        function limpiarFiltros() {
+            document.getElementById('filtroFecha').value = "";
+            document.getElementById('filtroEstado').value = "";
+            actualizarTablaHistorial();
+        }
+        function obtenerRegistrosFiltrados() {
+            const fechaFiltro = document.getElementById('filtroFecha').value;
+            const estadoFiltro = document.getElementById('filtroEstado').value;
+            return asistencias.map((item, originalIndex) => ({ ...item, originalIndex })).filter(item => {
+                let coincideFecha = true;
+                let coincideEstado = true;
+                if (fechaFiltro) {
+                    if (item.rawDate) {
+                        coincideFecha = item.rawDate === fechaFiltro;
+                    } else {
+                        coincideFecha = item.fecha.includes(fechaFiltro);
+                    }
+                }
+                if (estadoFiltro) {
+                    coincideEstado = item.estado === estadoFiltro;
+                }
+                return coincideFecha && coincideEstado;
+            });
+        }
+        function actualizarTablaHistorial() {
+            const tbody = document.getElementById('tablaHistorialBody');
+            const filtrados = obtenerRegistrosFiltrados();
+            
+            if (filtrados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">No se encontraron registros con los filtros seleccionados.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = filtrados.map(a => `
+                <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition">
+                    <td class="p-3 font-medium text-slate-200">${a.nombre}</td>
+                    <td class="p-3 text-slate-400">${a.codigo}</td>
+                    <td class="p-3 font-bold text-slate-300">${a.tipo}</td>
+                    <td class="p-3"><span class="px-3 py-1 rounded-full text-xs font-bold ${a.estado === 'TARDANZA' ? 'bg-amber-900/60 text-amber-300 border border-amber-700' : (a.estado === 'SALIDA' ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700' : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700')}">${a.estado}</span></td>
+                    <td class="p-3 text-slate-400 text-xs">${a.fecha}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="borrarRegistroHistorial(${a.originalIndex})" class="bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1 rounded-xl font-bold text-xs shadow transition cursor-pointer" title="Borrar registro">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        actualizarTablaHistorial();
+        
+        function exportarExcelCSV() {
+            const datosAExportar = obtenerRegistrosFiltrados();
+            if (datosAExportar.length === 0) {
+                mostrarModal("Sin Datos", "No hay registros disponibles para exportar con los filtros actuales.", "⚠️", () => {});
+                return;
+            }
+            
+            // Usamos punto y coma (;) para alinear columnas correctamente en Excel en español y \uFEFF para soportar tildes/Ñ.
+            let csvContent = "\uFEFFEstudiante;DNI;Tipo;Estado;Fecha y Hora\r\n";
+            
+            datosAExportar.forEach(row => {
+                const filaStr = `"${row.nombre}";"${row.codigo}";"${row.tipo}";"${row.estado}";"${row.fecha}"`;
+                csvContent += filaStr + "\r\n";
+            });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Reporte_Asistencia_Escolar.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        let miGrafico = null;
+        function actualizarGrafico() {
+            const puntuales = asistencias.filter(a => a.estado === 'PUNTUAL').length;
+            const tardanzas = asistencias.filter(a => a.estado === 'TARDANZA').length;
+            const ctx = document.getElementById('graficoAsistencia').getContext('2d');
+            if (miGrafico) miGrafico.destroy();
+            miGrafico = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Puntuales', 'Tardanzas'],
+                    datasets: [{
+                        label: 'Cantidad de Registros',
+                        data: [puntuales, tardanzas],
+                        backgroundColor: ['#10b981', '#f59e0b'],
+                        borderRadius: 10
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { 
+                        y: { beginAtZero: true, ticks: { stepSize: 1, color: '#f1f5f9' }, grid: { color: '#374151' } },
+                        x: { ticks: { color: '#f1f5f9' }, grid: { color: 'transparent' } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#f1f5f9' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
